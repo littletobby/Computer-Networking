@@ -25,12 +25,12 @@ class SelectService{
 	struct sockaddr_in servaddr;
 public:
 	SelectService(unsigned short port): port(port), listenfd(0) {}
-	void init(char* serv_ip, unsigned short serv_port);
+	void init(char* listen_ip, unsigned short listen_port, char* serv_ip, unsigned short serv_port);
 	void run();
 	void ac();
 };
 
-void SelectService::init(char* serv_ip, unsigned short serv_port) {
+void SelectService::init(char* listen_ip, unsigned short listen_port, char* serv_ip, unsigned short serv_port) {
 	struct sockaddr_in s_addr, c_addr;
 
 	sockets.clear();
@@ -39,7 +39,7 @@ void SelectService::init(char* serv_ip, unsigned short serv_port) {
 
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(80);
+	servaddr.sin_port = htons(serv_port);
 	if (inet_pton(AF_INET, serv_ip, &servaddr.sin_addr) <= 0) {
 		printf("inet_pton error for %s\n", serv_ip);
 		return;
@@ -53,8 +53,12 @@ void SelectService::init(char* serv_ip, unsigned short serv_port) {
 
 	memset(&s_addr, 0, sizeof(s_addr));
 	s_addr.sin_family = AF_INET;
-	s_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	s_addr.sin_port = htons(port);
+	//s_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	s_addr.sin_port = htons(listen_port);
+	if (inet_pton(AF_INET, listen_ip, &s_addr.sin_addr) <= 0) {
+		printf("inet_pton error for %s\n", listen_ip);
+		return;
+	}
 
 	if (bind(listenfd, (struct sockaddr*)(&s_addr), sizeof(s_addr)) == -1) {
 		printf("bind socket error: %s(errno: %d)\n", strerror(errno), errno);
@@ -176,10 +180,31 @@ R:;
 }
 
 SelectService ss(10241);
-int main() {
-	char serv_ip[] = "127.0.0.1";
-	//SelectService ss(10241);
-	ss.init(serv_ip, 80);
-	ss.run();
+int main(int argc, char** argv) {
+	if (argc == 1) {
+		char listen_ip[] = "127.0.0,1";
+		char serv_ip[] = "127.0.0.1";
+		//SelectService ss(10241);
+		ss.init(listen_ip, 10241, serv_ip, 80);
+		ss.run();
+	}
+	else if (argc == 2) {
+		if (string(argv[1]) == "--Alice") {
+			//SelectService ss(7000);
+			char listen_ip[] = "127.0.0.1";
+			char serv_ip[] = "172.19.0.1";
+			ss.init(listen_ip, 7000, serv_ip, 80);
+			ss.run();
+		}
+		else if (string(argv[1]) == "--Bob") {
+			char listen_ip[] = "172.20.0.2";
+			char serv_ip[] = "127.0.0.1";
+			ss.init(listen_ip, 80, serv_ip, 8000);
+			ss.run();
+		}
+		else {
+			printf("usage: ./tcp_proxy <--Alice> <--Bob>\n");
+		}
+	}
 	return 0;
 }
