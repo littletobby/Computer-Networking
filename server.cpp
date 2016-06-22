@@ -22,6 +22,8 @@ int main(int argc, char** argv)
     exit(0);
     }
 
+    printf("create socket: %d\n", listenfd);
+
     char serv_id[] = "172.20.0.1";
 
     memset(&servaddr, 0, sizeof(servaddr));
@@ -30,7 +32,7 @@ int main(int argc, char** argv)
     servaddr.sin_port = htons(6666);
     if (inet_pton(AF_INET, serv_id, &servaddr.sin_addr) <= 0) {
         printf("inet_pton error for %s\n", serv_id);
-        return;
+        return 0;
     }
 
     if( bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){

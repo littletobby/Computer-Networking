@@ -28,7 +28,11 @@ public:
 	void init(char* listen_ip, unsigned short listen_port, char* serv_ip, unsigned short serv_port);
 	void run();
 	void ac();
+	bool send_buf(int u);
 };
+
+char fd_buf[65536][1024];
+int fd_len[65536];
 
 void SelectService::init(char* listen_ip, unsigned short listen_port, char* serv_ip, unsigned short serv_port) {
 	struct sockaddr_in s_addr, c_addr;
@@ -73,6 +77,7 @@ void SelectService::init(char* listen_ip, unsigned short listen_port, char* serv
 
 void SelectService::run() {
 	fd_set rdfds;
+	fd_set wrfds;
 	struct timeval tv;
 	int socketSize;
 	vector<int> rec;
@@ -83,13 +88,15 @@ void SelectService::run() {
 		socketSize = listenfd;
 		FD_ZERO(&rdfds);
 		FD_SET(listenfd, &rdfds);
+		FD_ZERO(&wrfds);
 		for (set<int>::iterator it = sockets.begin(); it != sockets.end(); it++) {
 			FD_SET(*it, &rdfds);
+			FD_SET(*it, &wrfds);
 			if ((*it) > socketSize) socketSize = *it;
 		}
 		rec.clear();
 		//printf("select ready\n");
-		int ret = select(socketSize + 1, &rdfds, NULL, NULL, &tv);
+		int ret = select(socketSize + 1, &rdfds, &wrfds, NULL, &tv);
 		if (ret < 0) {
 			printf("select error: %s(errno: %d)\n", strerror(errno), errno);
 			//printf("listen size: %d\n", sockets.size());
@@ -108,26 +115,52 @@ void SelectService::run() {
 				if (f[*it] == 0) {
 					continue;
 				}
+				if (fd_len[*it] && FD_ISSET(*it, &wrfds)) {
+					if (send_buf(*it)) goto R;
+					/*if (send(*it, fd_buf[*it], fd_len[*it], 0) == 0) {
+						fd_len[*it] = 0;
+						goto R;
+					}*/
+				}
 				if (FD_ISSET(*it, &rdfds)) {
-					memset(buf, 0, sizeof(buf));
+					//memset(buf, 0, sizeof(buf));
 					//printf("socket %d read\n", *it);
+					if (fd_len[f[*it]]) continue;
 					ret = recv(*it, buf, MAX_BUF_SIZE, 0);
-					if (ret > 0) {
+					if (ret <= 0) goto R;
+					//if (ret > 0) {
 						//printf("%d socket:%d data:%s\n", socketSize, *it, buf);
 						//strcpy(buf, "hello, this is select server.");
-						send(f[*it], buf, ret, 0);
+					if (FD_ISSET(*it, &wrfds)) {
+						/*if (fd_len[f[*it]]) {
+							if (send(f[*it], fd_buf[f[*it]], fd_len[f[*it]]) == 0) {
+								fd_len[f[*it]] = 0;
+								goto R;
+							}
+						}*/
+						if (send(f[*it], buf, ret, 0) == 0) goto R;
 					}
 					else {
-						printf("%d socket:%d %d close", socketSize, *it, f[*it]);
-						rec.push_back(*it);
-						rec.push_back(f[*it]);
-						close(*it);
-						close(f[*it]);
-						f[f[*it]]=0;
-						f[*it]=0;
-						//it = sockets.erase(it);
+						fd_len[f[*it]] = ret;
+						memcpy(fd_buf[f[*it]], buf, sizeof buf);
 					}
+					//}
+					//else {
+						
+						//it = sockets.erase(it);
+					//}
 				}
+				continue;
+R:;
+				printf("%d socket:%d %d close", socketSize, *it, f[*it]);
+				rec.push_back(*it);
+				rec.push_back(f[*it]);
+				fd_len[*it] = 0;
+				fd_len[f[*it]] = 0;
+				close(*it);
+				close(f[*it]);
+				f[f[*it]]=0;
+				f[*it]=0;
 				//else {
 					//it++;
 				//}
@@ -138,6 +171,12 @@ void SelectService::run() {
 		}
 	}
 }
+bool SelectService::send_buf(int u) {
+	bool flag = 0;
+	if (send(u, fd_buf[u], fd_len[u], 0) == 0) flag = 1;
+	fd_len[u] = 0;
+	return flag;
+}
 char sendline[4096];
 void SelectService::ac() {
 	struct sockaddr client_addr;
@@ -146,6 +185,7 @@ void SelectService::ac() {
 
 	if ((connfd = accept(listenfd, &client_addr, &length)) == -1) {
 		printf("accept socket error: %s(errno: %d)\n", strerror(errno), errno);
+		int t = 0 / 0;
 		return;
 	}
 	sockets.insert(connfd);
@@ -180,9 +220,10 @@ R:;
 }
 
 SelectService ss(10241);
+
 int main(int argc, char** argv) {
 	if (argc == 1) {
-		char listen_ip[] = "127.0.0,1";
+		char listen_ip[] = "127.0.0.1";
 		char serv_ip[] = "127.0.0.1";
 		//SelectService ss(10241);
 		ss.init(listen_ip, 10241, serv_ip, 80);
@@ -193,13 +234,13 @@ int main(int argc, char** argv) {
 			//SelectService ss(7000);
 			char listen_ip[] = "127.0.0.1";
 			char serv_ip[] = "172.19.0.1";
-			ss.init(listen_ip, 7000, serv_ip, 80);
+			ss.init(listen_ip, 7000, serv_ip, 10241);
 			ss.run();
 		}
 		else if (string(argv[1]) == "--Bob") {
-			char listen_ip[] = "172.20.0.2";
+			char listen_ip[] = "172.20.0.1";
 			char serv_ip[] = "127.0.0.1";
-			ss.init(listen_ip, 80, serv_ip, 8000);
+			ss.init(listen_ip, 10241, serv_ip, 80);
 			ss.run();
 		}
 		else {
